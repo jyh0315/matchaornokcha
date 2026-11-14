@@ -2,10 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>말차 or 녹차</title>
-<meta name="description" content="간이 분광광도계와 닌히드린 반응지 RGB로 말차와 녹차를 구별하는 앱">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<meta name="description" content="말차와 녹차를 구별하는 판별 앱">
 <style>
   :root {
     --bg: #f4f5f0;
@@ -21,871 +20,310 @@
     --warn: #a86a00;
     --err: #b8372d;
     --cR: #c8432f; --cG: #2f8556; --cB: #2c62b0;
-    --cR-bg: #fbeeeb; --cG-bg: #e9f4ee; --cB-bg: #e9f0fa;
     --matcha: #4f7a1f; --matcha-soft: #e5efd6;
     --tea: #7a5f9e; --tea-soft: #ece4f5;
     --gray-soft: #f8ead7;
-    --mono: 'JetBrains Mono', 'SF Mono', Consolas, 'D2Coding', monospace;
+    --mono: 'SF Mono', Consolas, 'D2Coding', monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); }
   body {
     font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Segoe UI', 'Malgun Gothic', system-ui, sans-serif;
-    background: var(--bg); color: var(--text);
-    padding: 18px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px));
-    font-size: 13px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+    color: var(--text); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+    padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left));
   }
-  h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
-  h2 { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .3px; margin-bottom: 10px; }
-  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .app { max-width: 520px; margin: 0 auto; display: grid; gap: 16px; }
+  header { text-align: center; display: grid; gap: 12px; }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+  h1 .m { color: var(--matcha); } h1 .t { color: var(--tea); } h1 .or { color: var(--muted); font-weight: 500; font-size: 18px; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+  .tabs button { border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--sub); padding: 9px; border-radius: 7px; cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: grid; gap: 14px; }
+  [hidden] { display: none !important; }
+  button:focus-visible, .drop:focus-visible { outline: 2px solid var(--matcha); outline-offset: 2px; }
 
-  /* 상단 바 */
-  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-  .brand { display: flex; align-items: baseline; gap: 8px; }
-  .brand span { font-size: 12px; color: var(--muted); }
-  .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
-  .tabs a { text-decoration: none; color: var(--sub); padding: 6px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
-  .tabs a.on { background: var(--ink); color: #fff; }
-  .conn-state { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sub); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9c9c4; transition: background .2s; }
-  .dot.conn { background: var(--ok); }
-  .dot.measure { background: var(--cR); animation: pulse 1.2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-  @media (prefers-reduced-motion: reduce) { .dot.measure { animation: none; } }
-  #sampleCnt { color: var(--muted); font-variant-numeric: tabular-nums; }
-
-  .view[hidden] { display: none !important; }
-
-  /* 레이아웃 */
-  .grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; align-items: start; }
-  .left-col, .right-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-width: 0; }
-  .chart-panel { display: flex; flex-direction: column; height: 320px; }
-  .log-panel { height: 180px; overflow: hidden; }
-
-  select, input[type=number] {
-    background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
-    border-radius: 6px; padding: 6px 9px; font-size: 12.5px; font-family: inherit; outline: none;
-  }
-  select { flex: 1; }
-  select:focus, input[type=number]:focus { border-color: var(--ink); }
-  .btn {
-    padding: 7px 13px; border-radius: 6px; border: 1px solid var(--border-strong);
-    font-size: 12.5px; font-weight: 500; font-family: inherit; cursor: pointer;
-    background: var(--surface); color: var(--text); white-space: nowrap;
-  }
-  .btn:hover:not(:disabled) { background: var(--surface2); border-color: #b9bdb0; }
+  /* 단계 */
+  .step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+  .num { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .num.done { background: var(--ok); color: #fff; border-color: var(--ok); }
+  .step-body { display: grid; gap: 8px; min-width: 0; }
+  .step-title { font-weight: 700; font-size: 15px; }
+  .step-desc { font-size: 12.5px; color: var(--muted); }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-strong); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--surface); color: var(--text); }
+  .btn:hover:not(:disabled) { background: var(--surface2); }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
   .btn-primary { background: var(--ink); color: #fff; border-color: var(--ink); }
   .btn-primary:hover:not(:disabled) { background: #3a4437; }
-  .btn-danger { color: var(--err); }
-  .btn-sm { padding: 5px 9px; font-size: 12px; }
-  .btn-convert { width: 100%; padding: 10px; font-size: 13px; font-weight: 600; }
-  button:focus-visible, a:focus-visible, input:focus-visible, .drop:focus-visible { outline: 2px solid var(--matcha); outline-offset: 2px; }
-  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-
-  .measure-btn { width: 100%; padding: 11px; border-radius: 6px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; }
-  .measure-btn.start { background: var(--ink); color: #fff; border: 1px solid var(--ink); }
-  .measure-btn.stop { background: #fff; color: var(--err); border: 1px solid var(--err); }
-  .measure-btn:disabled { opacity: .35; cursor: not-allowed; }
-  .hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
-  .center { text-align: center; }
-
-  .ch-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 12px; }
-  .ch-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 4px; border-radius: 6px; border: 1px solid var(--border-strong); font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer; background: var(--surface); color: var(--sub); }
-  .ch-btn::before { content: ''; width: 7px; height: 7px; border-radius: 50%; }
-  #chR::before { background: var(--cR); } #chG::before { background: var(--cG); } #chB::before { background: var(--cB); }
-  .ch-btn.sel-R { border-color: var(--cR); color: var(--cR); background: var(--cR-bg); }
-  .ch-btn.sel-G { border-color: var(--cG); color: var(--cG); background: var(--cG-bg); }
-  .ch-btn.sel-B { border-color: var(--cB); color: var(--cB); background: var(--cB-bg); }
-  .led-row { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--sub); }
-  .led-item { display: flex; align-items: center; gap: 6px; }
-  .led-indicator { width: 9px; height: 9px; border-radius: 50%; background: #fff; border: 1px solid var(--border-strong); flex-shrink: 0; }
-  .led-indicator.r-on { background: var(--cR); border-color: var(--cR); box-shadow: 0 0 0 3px var(--cR-bg); }
-  .led-indicator.g-on { background: var(--cG); border-color: var(--cG); box-shadow: 0 0 0 3px var(--cG-bg); }
-  .led-indicator.b-on { background: var(--cB); border-color: var(--cB); box-shadow: 0 0 0 3px var(--cB-bg); }
-
-  .cal-line { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
-  .cal-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
-  .cal-badge.ok { background: #eaf4ee; color: var(--ok); border-color: #cfe5d8; }
-  .notice { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); line-height: 1.7; }
-  .notice b { color: var(--sub); font-weight: 600; }
-
-  .abs-big { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-  .abs-big .lbl { font-size: 12px; color: var(--sub); font-weight: 500; }
-  .abs-big .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .abs-big .val { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
-  .kv { display: flex; justify-content: space-between; align-items: baseline; padding-top: 10px; }
-  .kv .k { font-size: 11px; color: var(--muted); }
-  .kv .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
-
-  .i0-box { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .i0-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-  .i0-head span { font-size: 11px; color: var(--muted); }
-  .i0-item { margin-bottom: 10px; }
-  .i0-label { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 11px; }
-  .i0-label .name { font-weight: 600; width: 44px; }
-  .i0-label .cur { color: var(--muted); }
-  .i0-label .cur span { color: var(--warn); font-weight: 600; }
-  .i0-input { display: flex; gap: 5px; }
-  .i0-input input { flex: 1; min-width: 0; padding: 4px 8px; }
-  .i0-note { font-size: 10.5px; color: var(--muted); margin-top: 10px; }
-
-  .convert-progress { display: none; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 12px; }
-  .convert-progress.visible { display: flex; }
-  .convert-progress .line { flex: 1; height: 1px; background: var(--border); }
-  .pd { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); flex-shrink: 0; }
+  .btn-wide { width: 100%; padding: 14px; font-size: 16px; }
+  .badge { font-size: 12px; font-weight: 600; color: var(--ok); }
+  .divider { height: 1px; background: var(--border); }
+  .status { font-size: 12.5px; color: var(--muted); min-height: 18px; }
+  .status.err { color: var(--err); }
+  .progress { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .progress .line { flex: 1; height: 1px; background: var(--border); }
+  .pd { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); flex-shrink: 0; }
   .pd.active { background: var(--warn); } .pd.done { background: var(--ok); }
-  #cvStatus { font-size: 11px; color: var(--muted); margin-top: 6px; min-height: 16px; }
-  .result-panel { display: none; flex-direction: column; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-  .result-panel.visible { display: flex; }
-  .result-row { display: flex; justify-content: space-between; align-items: baseline; }
-  .result-label { font-size: 12px; font-weight: 600; }
-  .result-val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .result-bar-wrap { height: 3px; background: #eceee8; border-radius: 2px; margin: 5px 0 10px; }
-  .result-bar { height: 3px; border-radius: 2px; width: 0; transition: width .6s ease; }
-  .r-R .result-label, .r-R .result-val { color: var(--cR); }
-  .r-G .result-label, .r-G .result-val { color: var(--cG); }
-  .r-B .result-label, .r-B .result-val { color: var(--cB); }
-  #barR { background: var(--cR); } #barG { background: var(--cG); } #barB { background: var(--cB); }
 
-  .chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
-  .chart-head h2 { margin: 0; }
-  .chart-head .opt { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-  .chart-head select { flex: none; padding: 3px 6px; font-size: 11.5px; }
-  .chart-wrap { flex: 1; position: relative; min-height: 0; }
-  .log-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-  .log-head h2 { margin: 0; }
-  .log-box { height: calc(100% - 30px); overflow-y: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); line-height: 1.65; }
-  .log-data { color: var(--sub); } .log-ok { color: var(--ok); } .log-warn { color: var(--warn); } .log-err { color: var(--err); } .log-result { color: var(--cB); font-weight: 600; }
-
-  /* 판정 공통 */
-  .judge { display: grid; gap: 14px; }
-  .judge-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .judge-head h2 { margin: 0; }
-  .verdict { display: flex; gap: 14px; align-items: center; }
-  .swatch { width: 72px; height: 72px; border-radius: 8px; border: 1px solid var(--border); flex: none; }
-  .pill { display: inline-block; font-weight: 700; font-size: 22px; padding: 2px 14px; border-radius: 8px; background: var(--surface2); color: var(--muted); }
+  /* 결과 */
+  .result { text-align: center; display: grid; gap: 8px; justify-items: center; padding: 6px 0; }
+  .result-cap { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .3px; }
+  .pill { font-weight: 800; font-size: 40px; padding: 4px 28px; border-radius: 12px; background: var(--surface2); color: var(--muted); line-height: 1.3; }
   .pill.m { background: var(--matcha-soft); color: var(--matcha); }
   .pill.t { background: var(--tea-soft); color: var(--tea); }
-  .pill.w { background: var(--gray-soft); color: var(--warn); }
-  .vdesc { margin-top: 6px; color: var(--sub); font-size: 12.5px; }
-  .abs-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .abs-inputs label { display: grid; gap: 4px; font-size: 11px; font-weight: 600; }
-  .abs-inputs input { width: 100%; font-family: var(--mono); }
-  .samples { display: flex; flex-wrap: wrap; gap: 6px; }
-  .samples button { border-radius: 999px; font-size: 12px; padding: 4px 10px; }
-  .checks { list-style: none; display: grid; gap: 6px; }
-  .checks li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 8px 10px; border-radius: 6px; background: var(--surface2); font-size: 12.5px; }
-  .tag { font-weight: 700; }
-  .tag.m { color: var(--matcha); } .tag.t { color: var(--tea); } .tag.w { color: var(--warn); }
-  .note { background: var(--gray-soft); color: var(--warn); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
-  svg.scale { width: 100%; height: auto; display: block; }
-  svg.scale text { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .pill.w { background: var(--gray-soft); color: var(--warn); font-size: 26px; }
+  .result-desc { font-size: 13.5px; color: var(--sub); max-width: 40ch; }
+  .absvals { display: flex; gap: 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .absvals b { font-weight: 600; }
 
-  /* RGB 탭 */
-  .rgb-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-  @media (max-width: 820px) { .rgb-grid { grid-template-columns: 1fr; } }
-  .stack { display: grid; gap: 14px; }
-  .drop { display: block; border: 1.5px dashed var(--border-strong); border-radius: 8px; padding: 14px; text-align: center; color: var(--muted); cursor: pointer; }
+  /* 사진 */
+  .drop { display: block; border: 1.5px dashed var(--border-strong); border-radius: 10px; padding: 26px 14px; text-align: center; color: var(--sub); cursor: pointer; font-weight: 600; }
   .drop:hover, .drop.over { border-color: var(--matcha); color: var(--text); }
   .drop input { display: none; }
-  #cv { width: 100%; border-radius: 6px; cursor: crosshair; display: block; }
-  .chs { display: grid; gap: 8px; }
-  .ch { display: grid; grid-template-columns: 18px minmax(0, 1fr) 72px; gap: 10px; align-items: center; }
-  .ch label { font-family: var(--mono); font-weight: 600; }
-  .ch input[type=range] { width: 100%; }
-  .ch input[type=number] { width: 100%; font-family: var(--mono); }
-
-  /* 기준 탭 */
-  .doc { display: grid; gap: 14px; max-width: 900px; }
-  .doc .panel { display: grid; gap: 10px; padding: 18px 20px; }
-  .doc h3 { font-size: 15px; }
-  .doc h4 { font-size: 13px; margin-top: 4px; }
-  .doc p, .doc li { font-size: 13px; max-width: 75ch; }
-  .doc ol { padding-left: 18px; display: grid; gap: 4px; }
-  .tbl { overflow-x: auto; }
-  table { border-collapse: collapse; font-size: 12.5px; width: 100%; min-width: 520px; }
-  th, td { border-bottom: 1px solid var(--border); padding: 6px 9px; text-align: left; }
-  th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
-  td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-  .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; border: 1px solid var(--border); }
-  footer { margin-top: 24px; font-size: 11px; color: var(--muted); }
+  .drop small { display: block; font-weight: 400; color: var(--muted); margin-top: 4px; }
+  #cv { width: 100%; border-radius: 8px; cursor: crosshair; display: block; touch-action: manipulation; }
+  .swatch { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--border); }
+  footer { text-align: center; font-size: 11px; color: var(--muted); }
 </style>
 </head>
 <body>
+<div class="app">
+  <header>
+    <h1><span class="m">말차</span> <span class="or">or</span> <span class="t">녹차</span></h1>
+    <nav class="tabs" aria-label="판별 방법">
+      <button type="button" data-view="spectro" class="on">분광광도계</button>
+      <button type="button" data-view="photo">반응지 사진</button>
+    </nav>
+  </header>
 
-<div class="top">
-  <div class="brand"><h1>말차 or 녹차</h1><span>경북과학고 DARWIN · 현장 적용형 판별 키트</span></div>
-  <nav class="tabs" aria-label="화면 전환">
-    <a href="#spectro" data-view="spectro">분광광도계 판별</a>
-    <a href="#rgb" data-view="rgb">반응지 RGB 판별</a>
-    <a href="#criteria" data-view="criteria">판별 기준</a>
-  </nav>
-  <div class="conn-state"><div class="dot" id="dot"></div><span id="statusTxt">미연결</span><span id="sampleCnt">0개</span></div>
-</div>
-
-<!-- ======================= 분광광도계 ======================= -->
-<section class="view" id="view-spectro">
-<div class="grid">
-  <div class="left-col">
-    <div class="panel">
-      <h2>포트 연결</h2>
-      <div class="row">
-        <select id="baud">
-          <option value="9600" selected>9600 baud</option>
-          <option value="19200">19200</option>
-          <option value="57600">57600</option>
-          <option value="115200">115200</option>
-        </select>
-        <button class="btn btn-primary" id="connBtn" onclick="toggleConnect()">연결</button>
-      </div>
-      <div class="hint">Chrome 또는 Edge(PC)에서 USB로 연결하세요.</div>
-    </div>
-
-    <div class="panel">
-      <h2>보정</h2>
-      <div class="row" style="margin-bottom:10px;">
-        <button class="btn" id="darkBtn" onclick="sendCmd('D')" disabled>암보정</button>
-        <button class="btn" id="brightBtn" onclick="sendCmd('B')" disabled>초기 빛 세기 구하기</button>
-      </div>
-      <div class="cal-line">
-        <span>암</span><span class="cal-badge" id="darkBadge">미완료</span>
-        <span style="margin-left:6px;">명</span><span class="cal-badge" id="brightBadge">미완료</span>
-      </div>
-      <div class="notice"><b>순서</b>  암보정(LED OFF) → 초기 빛 세기 구하기(증류수 큐벳) → 시료 큐벳 → 각 파장별 평균 흡광도 구하기</div>
-    </div>
-
-    <div class="panel">
-      <h2>LED 채널</h2>
-      <div class="ch-grid">
-        <button class="ch-btn sel-R" id="chR" onclick="setChannel('R')">Red</button>
-        <button class="ch-btn" id="chG" onclick="setChannel('G')">Green</button>
-        <button class="ch-btn" id="chB" onclick="setChannel('B')">Blue</button>
-      </div>
-      <div class="led-row">
-        <div class="led-item"><div class="led-indicator" id="ledR"></div>RED</div>
-        <div class="led-item"><div class="led-indicator" id="ledG"></div>GREEN</div>
-        <div class="led-item"><div class="led-indicator" id="ledB"></div>BLUE</div>
+  <!-- ================= 분광광도계 ================= -->
+  <section id="view-spectro" class="card">
+    <div class="step">
+      <div class="num" id="n1">1</div>
+      <div class="step-body">
+        <div class="step-title">기기 연결</div>
+        <div class="btns"><button class="btn btn-primary" id="connBtn" type="button">연결하기</button></div>
+        <div class="step-desc">PC의 Chrome 또는 Edge에서 USB로 연결하세요.</div>
       </div>
     </div>
-
-    <div class="panel">
-      <h2>관측 제어</h2>
-      <button class="measure-btn start" id="measureBtn" onclick="toggleMeasure()" disabled>관측 시작</button>
-      <div class="hint center" id="measureNote">보정 완료 후 활성화됩니다</div>
-    </div>
-
-    <div class="panel">
-      <h2>현재 흡광도</h2>
-      <div class="abs-big">
-        <div><div class="lbl" id="absChLabel">RED 채널</div><div class="sub">실시간</div></div>
-        <div class="val" id="absNow">—</div>
-      </div>
-      <div class="kv"><span class="k">센서 raw값 (ADC 0~1023)</span><span class="v" id="rawNow">—</span></div>
-      <div class="i0-box">
-        <div class="i0-head"><span>I0 수동 입력 (파장별)</span><button class="btn btn-danger btn-sm" onclick="clearAllManualI0()">전체 초기화</button></div>
-        <div class="i0-item">
-          <div class="i0-label"><span class="name" style="color:var(--cR)">RED</span><span class="cur">현재 <span id="i0DisplayR">미설정</span></span></div>
-          <div class="i0-input"><input type="number" id="i0InputR" placeholder="raw값" step="0.1" min="0"><button class="btn btn-sm" onclick="setManualI0('R')">설정</button><button class="btn btn-danger btn-sm" onclick="clearManualI0('R')" aria-label="RED I0 초기화">✕</button></div>
+    <div class="divider"></div>
+    <div class="step">
+      <div class="num" id="n2">2</div>
+      <div class="step-body">
+        <div class="step-title">보정</div>
+        <div class="btns">
+          <button class="btn" id="darkBtn" type="button" disabled>암보정</button>
+          <button class="btn" id="brightBtn" type="button" disabled>증류수로 기준 잡기</button>
         </div>
-        <div class="i0-item">
-          <div class="i0-label"><span class="name" style="color:var(--cG)">GREEN</span><span class="cur">현재 <span id="i0DisplayG">미설정</span></span></div>
-          <div class="i0-input"><input type="number" id="i0InputG" placeholder="raw값" step="0.1" min="0"><button class="btn btn-sm" onclick="setManualI0('G')">설정</button><button class="btn btn-danger btn-sm" onclick="clearManualI0('G')" aria-label="GREEN I0 초기화">✕</button></div>
+        <div class="step-desc">암보정 <span class="badge" id="darkBadge"></span> → 증류수 큐벳을 넣고 기준 잡기 <span class="badge" id="brightBadge"></span></div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="step">
+      <div class="num" id="n3">3</div>
+      <div class="step-body">
+        <div class="step-title">시료 측정</div>
+        <div class="step-desc">가루 3 g + 증류수 200 mL를 거르고 원심분리한 용액을 큐벳에 넣으세요.</div>
+        <button class="btn btn-primary btn-wide" id="measureBtn" type="button" disabled>측정하기</button>
+        <div class="progress" id="prog" hidden>
+          <div class="pd" id="pdR"></div><span style="color:var(--cR)">RED</span><div class="line"></div>
+          <div class="pd" id="pdG"></div><span style="color:var(--cG)">GREEN</span><div class="line"></div>
+          <div class="pd" id="pdB"></div><span style="color:var(--cB)">BLUE</span>
         </div>
-        <div class="i0-item">
-          <div class="i0-label"><span class="name" style="color:var(--cB)">BLUE</span><span class="cur">현재 <span id="i0DisplayB">미설정</span></span></div>
-          <div class="i0-input"><input type="number" id="i0InputB" placeholder="raw값" step="0.1" min="0"><button class="btn btn-sm" onclick="setManualI0('B')">설정</button><button class="btn btn-danger btn-sm" onclick="clearManualI0('B')" aria-label="BLUE I0 초기화">✕</button></div>
-        </div>
-        <div class="i0-note">설정된 파장은 초기 빛 세기 대신 이 값을 I0으로 사용</div>
+        <div class="status" id="sStatus"></div>
       </div>
     </div>
-
-    <div class="panel">
-      <h2>각 파장별 평균 흡광도</h2>
-      <button class="btn btn-convert" id="convertBtn" onclick="doConvert()" disabled>각 파장별 평균 흡광도 구하기</button>
-      <div class="convert-progress" id="cvProg">
-        <div class="pd" id="pdR"></div><span style="color:var(--cR)">RED</span><div class="line"></div>
-        <div class="pd" id="pdG"></div><span style="color:var(--cG)">GREEN</span><div class="line"></div>
-        <div class="pd" id="pdB"></div><span style="color:var(--cB)">BLUE</span>
-      </div>
-      <div id="cvStatus"></div>
-      <div class="result-panel" id="resultPanel">
-        <div class="hint" style="margin:0 0 8px">3초 평균 흡광도 · 아래 판정에 자동 입력됨</div>
-        <div class="result-row r-R"><span class="result-label">RED</span><span class="result-val" id="resR">—</span></div>
-        <div class="result-bar-wrap"><div class="result-bar" id="barR"></div></div>
-        <div class="result-row r-G"><span class="result-label">GREEN</span><span class="result-val" id="resG">—</span></div>
-        <div class="result-bar-wrap"><div class="result-bar" id="barG"></div></div>
-        <div class="result-row r-B"><span class="result-label">BLUE</span><span class="result-val" id="resB">—</span></div>
-        <div class="result-bar-wrap"><div class="result-bar" id="barB"></div></div>
-      </div>
+    <div class="divider"></div>
+    <div class="result" aria-live="polite">
+      <div class="result-cap">판별 결과</div>
+      <div class="pill" id="sPill">—</div>
+      <div class="result-desc" id="sDesc">측정하면 여기에 결과가 나옵니다.</div>
+      <div class="absvals" id="sVals" hidden></div>
     </div>
+  </section>
 
-    <div class="panel">
-      <h2>데이터 내보내기</h2>
-      <div class="row" style="margin-bottom:8px;">
-        <button class="btn" onclick="exportCSV()">CSV 저장</button>
-        <button class="btn" onclick="copyCSV()">클립보드</button>
-        <button class="btn btn-danger" onclick="clearData()">초기화</button>
-      </div>
-      <div class="hint" style="margin:0">Excel에서 직접 열거나 붙여넣기 가능</div>
-    </div>
-  </div>
-
-  <div class="right-col">
-    <!-- 흡광도 판정 -->
-    <div class="panel judge" aria-live="polite">
-      <div class="judge-head"><h2>말차·녹차 판정 (흡광도)</h2><span class="hint" style="margin:0">측정 프로토콜: 가루 3 g + 증류수 200 mL → 여과 → 3000 rpm 5분 원심분리</span></div>
-      <div class="verdict">
-        <div><span class="pill" id="sPill">—</span><div class="vdesc" id="sDesc"></div></div>
-      </div>
-      <div class="abs-inputs">
-        <label style="color:var(--cR)">A RED (620 nm)<input type="number" id="aR" step="0.0001" min="0"></label>
-        <label style="color:var(--cG)">A GREEN (520 nm)<input type="number" id="aG" step="0.0001" min="0"></label>
-        <label style="color:var(--cB)">A BLUE (450 nm)<input type="number" id="aB" step="0.0001" min="0"></label>
-      </div>
-      <div class="samples" id="sSamples"></div>
-      <svg class="scale" viewBox="0 0 600 100" role="img" aria-label="평균 흡광도 기준선">
-        <rect x="30" y="40" width="204" height="14" fill="var(--tea-soft)"/>
-        <rect x="234" y="40" width="60" height="14" fill="var(--gray-soft)"/>
-        <rect x="294" y="40" width="276" height="14" fill="var(--matcha-soft)"/>
-        <line x1="264" x2="264" y1="32" y2="62" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="3 2"/>
-        <text x="264" y="26" text-anchor="middle" style="fill:var(--text)">기준 Ā=0.39</text>
-        <g id="sRefs"></g>
-        <g id="sMarker"><path d="M0 0 L-7 -11 L7 -11 Z" fill="var(--text)"/></g>
-        <text x="30" y="92" text-anchor="middle">0</text>
-        <text x="234" y="92" text-anchor="middle">0.34</text>
-        <text x="294" y="92" text-anchor="middle">0.44</text>
-        <text x="570" y="92" text-anchor="middle">0.9</text>
-        <text x="120" y="76" text-anchor="middle" style="fill:var(--tea)">녹차</text>
-        <text x="440" y="76" text-anchor="middle" style="fill:var(--matcha)">말차</text>
-      </svg>
-      <ul class="checks" id="sChecks"></ul>
-      <div class="note" id="sNote" hidden></div>
-    </div>
-
-    <div class="panel chart-panel">
-      <div class="chart-head">
-        <h2>시간에 따른 흡광도</h2>
-        <span class="opt">표시
-          <select id="windowSize" onchange="windowSize=+this.value">
-            <option value="50">50</option><option value="100" selected>100</option><option value="200">200</option><option value="0">전체</option>
-          </select> 포인트</span>
-      </div>
-      <div class="chart-wrap"><canvas id="absChart"></canvas></div>
-    </div>
-
-    <div class="panel log-panel">
-      <div class="log-head"><h2>시리얼 로그</h2><button class="btn btn-sm" onclick="clearLog()">지우기</button></div>
-      <div class="log-box" id="logBox"></div>
-    </div>
-  </div>
-</div>
-</section>
-
-<!-- ======================= 반응지 RGB ======================= -->
-<section class="view" id="view-rgb" hidden>
-<div class="rgb-grid">
-  <div class="panel stack">
-    <h2>닌히드린 반응지 색 입력</h2>
+  <!-- ================= 반응지 사진 ================= -->
+  <section id="view-photo" class="card" hidden>
     <label class="drop" id="drop" tabindex="0">
       <input type="file" id="file" accept="image/*">
-      <span id="dropText">반응지 사진 올리기 (클릭 또는 끌어다 놓기)</span>
+      <span id="dropText">닌히드린 반응지 사진 올리기</span>
+      <small>사진을 찍거나 고르세요</small>
     </label>
     <canvas id="cv" hidden></canvas>
-    <p class="hint" id="cvHint" hidden style="margin:0">보라색으로 발색된 부분을 누르세요. 누른 지점 주변 9×9 픽셀의 평균 RGB를 사용합니다.</p>
-    <div class="chs">
-      <div class="ch"><label for="rR">R</label><input type="range" id="rR" min="0" max="255"><input type="number" id="nR" min="0" max="255"></div>
-      <div class="ch"><label for="rG">G</label><input type="range" id="rG" min="0" max="255"><input type="number" id="nG" min="0" max="255"></div>
-      <div class="ch"><label for="rB">B</label><input type="range" id="rB" min="0" max="255"><input type="number" id="nB" min="0" max="255"></div>
+    <div class="step-desc" id="cvHint" hidden style="text-align:center">보라색으로 변한 부분을 누르세요.</div>
+    <div class="divider"></div>
+    <div class="result" aria-live="polite">
+      <div class="result-cap">판별 결과</div>
+      <div class="swatch" id="swatch" hidden></div>
+      <div class="pill" id="rPill">—</div>
+      <div class="result-desc" id="rDesc">사진에서 발색 부분을 누르면 결과가 나옵니다.</div>
     </div>
-    <div><p class="hint" style="margin:0 0 6px">실험 데이터 불러오기</p><div class="samples" id="rSamples"></div></div>
-  </div>
+  </section>
 
-  <div class="panel judge" aria-live="polite">
-    <h2>말차·녹차 판정 (닌히드린 RGB)</h2>
-    <div class="verdict">
-      <div class="swatch" id="swatch"></div>
-      <div><span class="pill" id="rPill">—</span><div class="vdesc" id="rDesc"></div></div>
-    </div>
-    <svg class="scale" viewBox="0 0 600 100" role="img" aria-label="G 값 기준선">
-      <rect x="30" y="40" width="211.8" height="14" fill="var(--matcha-soft)"/>
-      <rect x="241.8" y="40" width="60" height="14" fill="var(--gray-soft)"/>
-      <rect x="301.8" y="40" width="268.2" height="14" fill="var(--tea-soft)"/>
-      <line x1="277.1" x2="277.1" y1="32" y2="62" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="3 2"/>
-      <text x="277.1" y="26" text-anchor="middle" style="fill:var(--text)">기준 G=70</text>
-      <g id="rRefs"></g>
-      <g id="rMarker"><path d="M0 0 L-7 -11 L7 -11 Z" fill="var(--text)"/></g>
-      <text x="30" y="92" text-anchor="middle">0</text>
-      <text x="241.8" y="92" text-anchor="middle">60</text>
-      <text x="301.8" y="92" text-anchor="middle">77</text>
-      <text x="570" y="92" text-anchor="middle">255</text>
-      <text x="120" y="76" text-anchor="middle" style="fill:var(--matcha)">말차</text>
-      <text x="420" y="76" text-anchor="middle" style="fill:var(--tea)">녹차</text>
-    </svg>
-    <ul class="checks" id="rChecks"></ul>
-    <div class="note" id="rNote" hidden></div>
-  </div>
+  <footer>경북과학고등학교 DARWIN</footer>
 </div>
-</section>
-
-<!-- ======================= 판별 기준 ======================= -->
-<section class="view doc" id="view-criteria" hidden>
-  <div class="panel">
-    <h3>A. 분광광도계 흡광도 기준</h3>
-    <p>말차는 차광 재배로 엽록소가 많아, 같은 농도로 우린 용액에서 빛을 더 많이 흡수합니다(비어-람베르트 법칙 A = εbc). 간이 분광광도계의 RED·GREEN·BLUE LED로 측정한 흡광도를 기준으로 삼았습니다.</p>
-    <div class="tbl"><table>
-      <thead><tr><th>시료</th><th class="n">RED 620</th><th class="n">GREEN 520</th><th class="n">BLUE 450</th><th class="n">평균 Ā</th><th class="n">엽록소 지수</th></tr></thead>
-      <tbody id="specRows"></tbody>
-    </table></div>
-    <h4>기준 S1 · 평균 흡광도 Ā (주 기준)</h4>
-    <ol>
-      <li>세 파장 흡광도의 평균 Ā를 계산합니다. 녹차 0.308, 말차 0.473~0.575로 차이가 뚜렷합니다.</li>
-      <li>녹차 값과 가장 낮은 말차 값(보성 0.473)의 중간인 <b>Ā = 0.39</b>를 경계로 정했습니다. 0.39 이상이면 말차입니다.</li>
-      <li>0.34~0.44는 경계에서 ±0.05 이내라 <b>경계 구간</b>으로 두고 재측정을 권합니다.</li>
-    </ol>
-    <h4>기준 S2 · 파장별 투표 (보조 기준)</h4>
-    <p>파장마다 녹차와 보성 말차의 중간값을 경계로 정했습니다: RED 0.392, GREEN 0.337, BLUE 0.442. 세 파장 중 다수결로 판정합니다.</p>
-    <h4>기준 S3 · 엽록소 지수 (농도에 영향받지 않는 보조 기준)</h4>
-    <ol>
-      <li>엽록소는 청색과 적색 빛을 강하게 흡수하고 녹색 빛은 덜 흡수합니다. 그래서 <b>엽록소 지수 = (A<sub>RED</sub> + A<sub>BLUE</sub>) ÷ 2 ÷ A<sub>GREEN</sub></b>를 정의했습니다.</li>
-      <li>비율이므로 비어-람베르트 식의 농도 c와 광로 b가 약분되어, 우린 양이 조금 달라도 값이 크게 변하지 않습니다.</li>
-      <li>녹차 1.167, 말차 1.259~1.288이므로 녹차와 낮은 말차 값의 중간인 <b>1.21</b>을 경계로 정했습니다.</li>
-    </ol>
-    <h4>최종 판정</h4>
-    <ol>
-      <li>S1로 판정하고, S3가 같은 결론이면 신뢰도 높음으로 표시합니다.</li>
-      <li>S1은 말차인데 S3가 녹차이면, 농도가 진하게 우려졌거나 측정 조건이 달라졌을 수 있으므로 재측정을 권합니다.</li>
-      <li>S1은 녹차인데 S3가 말차이면, 연하게 우려진 말차일 수 있으므로 재측정을 권합니다.</li>
-    </ol>
-    <h4>한계</h4>
-    <ol>
-      <li>RGB LED 측정 데이터가 녹차 1종(티백), 말차 2종뿐이라 기준은 잠정적입니다. 가루 녹차와 색소 첨가 녹차를 더 측정해 보완해야 합니다.</li>
-      <li>녹색 식용 색소(황색 + 청색 색소)는 청색과 적색을 흡수하므로 엽록소 지수가 높게 나올 수 있습니다. 색소 첨가 의심 시료는 반응지 RGB 판별(닌히드린)을 함께 하세요.</li>
-      <li>Ā는 농도에 비례하므로 반드시 같은 프로토콜(가루 3 g + 증류수 200 mL, 여과 + 원심분리)로 시료를 만들어야 합니다. 미세 입자가 남으면 빛 산란으로 흡광도가 높게 나옵니다.</li>
-    </ol>
-  </div>
-
-  <div class="panel">
-    <h3>B. 닌히드린 반응지 RGB 기준</h3>
-    <p>닌히드린은 유리 아미노산과 반응해 보라색(루헤만 퍼플)을 만듭니다. 말차는 테아닌 등 유리 아미노산이 많아 <b>더 진한 보라색</b>, 즉 R·G·B 값이 모두 낮게 나옵니다.</p>
-    <div class="tbl"><table>
-      <thead><tr><th>측정</th><th>시료</th><th class="n">R</th><th class="n">G</th><th class="n">B</th><th class="n">밝기 Y</th></tr></thead>
-      <tbody id="rgbRows"></tbody>
-    </table></div>
-    <h4>기준 R1 · G 값 (주 기준)</h4>
-    <ol>
-      <li>말차는 G 0~60, 녹차는 G 77~115로 범위가 겹치지 않습니다. 중간값 68.5를 반올림해 <b>G = 70</b>을 경계로 정했습니다.</li>
-      <li>60~77은 실험 데이터가 없는 구간이라 <b>경계 구간</b>으로 표시합니다.</li>
-    </ol>
-    <h4>기준 R2 · 밝기 Y (보조 기준)</h4>
-    <p>Y = 0.299R + 0.587G + 0.114B. 말차 최대 73.4, 녹차 최소 88.9의 중간인 <b>Y = 81</b>을 경계로 정했습니다.</p>
-    <h4>기준 R3 · 가장 가까운 평균색 (보조 기준)</h4>
-    <p>말차 평균색 (65.7, 33.7, 74.7)과 녹차 평균색 (119.3, 97.0, 128.3) 중 RGB 공간에서 더 가까운 쪽으로 판정합니다.</p>
-    <h4>한계</h4>
-    <p>조명, 촬영 거리·각도, 카메라 자동 보정에 따라 RGB가 달라집니다. 같은 조명 아래에서 흰 종이와 함께 촬영하세요.</p>
-  </div>
-</section>
-
-<footer>경북과학고등학교 STEAM 클럽 · 제주 녹차 및 말차의 생화학적 성분 차이에 기반한 현장 적용형 판별 키트 개발 (2026)</footer>
 
 <script>
-// ═════════════ 탭 ═════════════
-const VIEWS = ['spectro', 'rgb', 'criteria'];
-function showView() {
-  const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'spectro';
-  VIEWS.forEach(n => { document.getElementById('view-' + n).hidden = n !== v; });
-  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.view === v));
-  if (v === 'spectro' && window.chart) chart.resize();
-}
-window.addEventListener('hashchange', showView);
-
-// ═════════════ 판별 기준 데이터 ═════════════
-const SPEC = [
-  { label: '티백 녹차', type: 't', a: [0.2891, 0.2774, 0.3582] },
-  { label: '보성 말차', type: 'm', a: [0.4949, 0.3965, 0.5267] },
-  { label: '시그니처 말차', type: 'm', a: [0.5880, 0.4904, 0.6464] },
-];
-const S_CUT = 0.39, S_LOW = 0.34, S_HIGH = 0.44, S_MAX = 0.9;
-const CH_CUT = [0.392, 0.337, 0.442];
-const IDX_CUT = 1.21;
-const RGBDATA = [
-  { name: '닌히드린 반응 평균', type: 'm', label: '말차', rgb: [47, 0, 45] },
-  { name: '키트 1차 검증', type: 'm', label: '시그니처 말차', rgb: [61, 41, 77] },
-  { name: '키트 2차 검증', type: 'm', label: '시그니처 말차', rgb: [89, 60, 102] },
-  { name: '닌히드린 반응 평균', type: 't', label: '녹차', rgb: [103, 77, 113] },
-  { name: '키트 1차 검증', type: 't', label: '티백 녹차', rgb: [121, 99, 135] },
-  { name: '키트 2차 검증', type: 't', label: '티백 녹차', rgb: [134, 115, 137] },
-];
-const NAME = t => t === 'm' ? '말차' : '녹차';
-const avg = a => (a[0] + a[1] + a[2]) / 3;
-const chlIdx = a => (a[0] + a[2]) / 2 / a[1];
 const $ = id => document.getElementById(id);
+const NAME = t => t === 'm' ? '말차' : '녹차';
 
-// ═════════════ 흡광도 판정 ═════════════
-const sx = v => 30 + Math.min(v, S_MAX) / S_MAX * 540;
-$('sRefs').innerHTML = SPEC.map(d => `<circle cx="${sx(avg(d.a))}" cy="47" r="5" fill="${d.type === 'm' ? 'var(--matcha)' : 'var(--tea)'}" stroke="var(--surface)" stroke-width="1.5"><title>${d.label} ${avg(d.a).toFixed(3)}</title></circle>`).join('');
-SPEC.forEach(d => {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn';
-  b.textContent = d.label + ' (실험값)';
-  b.onclick = () => setAbs(d.a);
-  $('sSamples').appendChild(b);
-});
-['aR', 'aG', 'aB'].forEach(id => $(id).addEventListener('input', judgeSpec));
-function setAbs(a) { ['aR', 'aG', 'aB'].forEach((id, i) => $(id).value = a[i].toFixed(4)); judgeSpec(); }
+// ── 탭 ──
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  $('view-spectro').hidden = b.dataset.view !== 'spectro';
+  $('view-photo').hidden = b.dataset.view !== 'photo';
+}));
 
-function judgeSpec() {
-  const a = ['aR', 'aG', 'aB'].map(id => parseFloat($(id).value));
+// ── 분광광도계 판정 (평균 흡광도 0.39, 경계 0.34~0.44, 엽록소 지수 1.21) ──
+function judgeSpec(a) {
+  const A = (a[0] + a[1] + a[2]) / 3;
+  const idx = a[1] > 0 ? (a[0] + a[2]) / 2 / a[1] : 0;
+  const s1 = A >= 0.39 ? 'm' : 't', s3 = idx >= 1.21 ? 'm' : 't';
   const pill = $('sPill');
-  if (a.some(v => isNaN(v) || v < 0) || a[1] <= 0) {
-    pill.className = 'pill'; pill.textContent = '—';
-    $('sDesc').textContent = '세 파장의 흡광도를 측정하거나 입력하세요.';
-    $('sChecks').innerHTML = ''; $('sNote').hidden = true;
-    $('sMarker').setAttribute('visibility', 'hidden');
-    return;
-  }
-  const A = avg(a), idx = chlIdx(a);
-  const s1 = A >= S_CUT ? 'm' : 't';
-  const votes = a.map((v, i) => v >= CH_CUT[i] ? 'm' : 't');
-  const nm = votes.filter(v => v === 'm').length;
-  const s2 = nm >= 2 ? 'm' : 't';
-  const s3 = idx >= IDX_CUT ? 'm' : 't';
-  const border = A > S_LOW && A < S_HIGH;
-  $('sMarker').setAttribute('visibility', 'visible');
-  $('sMarker').setAttribute('transform', `translate(${sx(A)} 38)`);
-
-  if (border) {
-    pill.className = 'pill w'; pill.textContent = `경계 구간 (${NAME(s1)} 쪽)`;
-    $('sDesc').textContent = `평균 흡광도 ${A.toFixed(3)}이 0.34~0.44 사이입니다. 시료를 새로 만들어 다시 측정하세요.`;
+  if (A > 0.34 && A < 0.44) {
+    pill.className = 'pill w'; pill.textContent = '판별 어려움';
+    $('sDesc').textContent = '경계에 가까운 값입니다. 시료를 다시 만들어 측정해 주세요.';
+  } else if (s1 !== s3) {
+    pill.className = 'pill w'; pill.textContent = '다시 측정';
+    $('sDesc').textContent = '측정값이 일관되지 않습니다. 용액 농도를 확인하고 다시 측정해 주세요.';
   } else {
     pill.className = 'pill ' + s1; pill.textContent = NAME(s1);
-    $('sDesc').textContent = `평균 흡광도 ${A.toFixed(3)} (기준 0.39 ${s1 === 'm' ? '이상' : '미만'}) · ` +
-      (s1 === s3 ? '엽록소 지수도 같은 결론, 신뢰도 높음' : '엽록소 지수와 결론이 달라 재측정 권장');
+    $('sDesc').textContent = s1 === 'm' ? '엽록소가 많아 빛을 많이 흡수합니다.' : '엽록소가 적어 빛을 적게 흡수합니다.';
   }
-  const row = (t, v, r) => `<li><span>${t} <b class="mono">${v}</b></span><span class="tag ${r}">${NAME(r)}</span></li>`;
-  $('sChecks').innerHTML =
-    row('S1 · 평균 흡광도 Ā', `${A.toFixed(3)} ${A >= S_CUT ? '≥' : '<'} 0.39`, s1) +
-    row('S2 · 파장별 투표', `R ${votes[0] === 'm' ? '말' : '녹'} · G ${votes[1] === 'm' ? '말' : '녹'} · B ${votes[2] === 'm' ? '말' : '녹'} (말차 ${nm}/3)`, s2) +
-    row('S3 · 엽록소 지수', `${idx.toFixed(3)} ${idx >= IDX_CUT ? '≥' : '<'} 1.21`, s3);
-  const note = $('sNote');
-  if (A > 1.2) { note.hidden = false; note.textContent = '흡광도가 매우 높습니다. 미세 입자가 남았거나 너무 진하게 우려졌을 수 있습니다. 원심분리 후 다시 측정하세요.'; }
-  else if (s1 !== s3) { note.hidden = false; note.textContent = s1 === 'm' ? '흡광도는 높지만 엽록소 지수가 낮습니다. 너무 진하게 우린 녹차일 수 있습니다.' : '흡광도는 낮지만 엽록소 지수가 높습니다. 연하게 우린 말차이거나 녹색 색소가 들어갔을 수 있습니다. 반응지 RGB 판별도 해 보세요.'; }
-  else note.hidden = true;
+  $('sVals').hidden = false;
+  $('sVals').innerHTML = `<span>R <b>${a[0].toFixed(3)}</b></span><span>G <b>${a[1].toFixed(3)}</b></span><span>B <b>${a[2].toFixed(3)}</b></span>`;
 }
 
-// ═════════════ RGB 판정 ═════════════
-const G_CUT = 70, G_LOW = 60, G_HIGH = 77, Y_CUT = 81;
-const lum = ([r, g, b]) => 0.299 * r + 0.587 * g + 0.114 * b;
-const cmean = t => [0, 1, 2].map(i => RGBDATA.filter(d => d.type === t).reduce((s, d) => s + d.rgb[i], 0) / 3);
-const CM = cmean('m'), CT = cmean('t');
-const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
-const hex = rgb => '#' + rgb.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
-const gx = g => 30 + g / 255 * 540;
-$('rRefs').innerHTML = RGBDATA.map(d => `<circle cx="${gx(d.rgb[1])}" cy="47" r="5" fill="${hex(d.rgb)}" stroke="var(--surface)" stroke-width="1.5"/>`).join('');
-RGBDATA.forEach(d => {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn';
-  b.innerHTML = `<span class="sw" style="background:${hex(d.rgb)}"></span>${d.label} · ${d.name}`;
-  b.onclick = () => setRGB(d.rgb);
-  $('rSamples').appendChild(b);
-});
-const CHS = ['R', 'G', 'B'];
-CHS.forEach(c => {
-  $('r' + c).addEventListener('input', e => { $('n' + c).value = e.target.value; judgeRGB(); });
-  $('n' + c).addEventListener('input', e => { $('r' + c).value = e.target.value; judgeRGB(); });
-});
-function setRGB(rgb) { rgb.forEach((v, i) => { $('r' + CHS[i]).value = Math.round(v); $('n' + CHS[i]).value = Math.round(v); }); judgeRGB(); }
-function judgeRGB() {
-  const rgb = CHS.map(c => Math.max(0, Math.min(255, +$('n' + c).value || 0))), [r, g, b] = rgb, y = lum(rgb);
-  $('swatch').style.background = hex(rgb);
-  $('rMarker').setAttribute('transform', `translate(${gx(g)} 38)`);
-  const r1 = g <= G_CUT ? 'm' : 't', r2 = y <= Y_CUT ? 'm' : 't';
-  const dm = dist(rgb, CM), dt = dist(rgb, CT), r3 = dm <= dt ? 'm' : 't';
-  const agree = [r1, r2, r3].filter(v => v === r1).length;
-  const pill = $('rPill');
-  if (g > G_LOW && g < G_HIGH) {
-    pill.className = 'pill w'; pill.textContent = `경계 구간 (${NAME(r1)} 쪽)`;
-    $('rDesc').textContent = `G = ${g}로 실험 데이터가 없는 60~77 사이입니다. 같은 조명에서 다시 찍어 확인하세요.`;
-  } else {
-    pill.className = 'pill ' + r1; pill.textContent = NAME(r1);
-    $('rDesc').textContent = `G = ${g} (기준 70 ${r1 === 'm' ? '이하' : '초과'}) · 세 기준 중 ${agree}개 일치` + (agree === 3 ? ', 신뢰도 높음' : ', 재측정 권장');
-  }
-  const row = (t, v, k) => `<li><span>${t} <b class="mono">${v}</b></span><span class="tag ${k}">${NAME(k)}</span></li>`;
-  $('rChecks').innerHTML = row('R1 · G 값', `${g} ${g <= G_CUT ? '≤' : '>'} 70`, r1) +
-    row('R2 · 밝기 Y', `${y.toFixed(1)} ${y <= Y_CUT ? '≤' : '>'} 81`, r2) +
-    row('R3 · 평균색 거리', `말차 ${dm.toFixed(0)} / 녹차 ${dt.toFixed(0)}`, r3);
-  const note = $('rNote');
-  if ((r + b) / 2 - g < 8) { note.hidden = false; note.textContent = 'G 값이 R·B보다 충분히 낮지 않아 닌히드린 보라색으로 보기 어렵습니다. 반응지의 발색 부분을 측정했는지 확인하세요.'; }
-  else note.hidden = true;
-}
-// 사진 샘플링
-const cv = $('cv'), cctx = cv.getContext('2d', { willReadFrequently: true });
-let img = null, mark = null;
-function drawImg() {
-  if (!img) return;
-  const w = Math.min(900, img.naturalWidth), h = Math.round(w * img.naturalHeight / img.naturalWidth);
-  cv.width = w; cv.height = h; cctx.drawImage(img, 0, 0, w, h);
-  if (mark) { cctx.lineWidth = 2; cctx.strokeStyle = '#fff'; cctx.strokeRect(mark[0] - 6, mark[1] - 6, 12, 12); cctx.strokeStyle = '#000'; cctx.strokeRect(mark[0] - 8, mark[1] - 8, 16, 16); }
-}
-function loadImg(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const im = new Image();
-  im.onload = () => { img = im; mark = null; cv.hidden = false; $('cvHint').hidden = false; $('dropText').textContent = file.name + ' · 다른 사진 올리기'; drawImg(); };
-  im.src = URL.createObjectURL(file);
-}
-$('file').addEventListener('change', e => loadImg(e.target.files[0]));
-const drop = $('drop');
-drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
-drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); loadImg(e.dataTransfer.files[0]); });
-drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
-cv.addEventListener('click', e => {
-  const rc = cv.getBoundingClientRect();
-  const x = Math.round((e.clientX - rc.left) * cv.width / rc.width), y = Math.round((e.clientY - rc.top) * cv.height / rc.height);
-  mark = null; drawImg();
-  const x0 = Math.max(0, x - 4), y0 = Math.max(0, y - 4);
-  const d = cctx.getImageData(x0, y0, Math.min(9, cv.width - x0), Math.min(9, cv.height - y0)).data;
-  const s = [0, 0, 0]; let n = 0;
-  for (let i = 0; i < d.length; i += 4) { s[0] += d[i]; s[1] += d[i + 1]; s[2] += d[i + 2]; n++; }
-  mark = [x, y]; drawImg(); setRGB(s.map(v => v / n));
-});
+// ── 시리얼 ──
+let port = null, reader = null, writer = null, connected = false;
+let calDark = false, calBright = false, lineBuf = '';
+function status(msg, err) { $('sStatus').textContent = msg || ''; $('sStatus').className = 'status' + (err ? ' err' : ''); }
 
-// 기준 표
-$('specRows').innerHTML = SPEC.map(d => `<tr><td class="tag ${d.type}">${d.label}</td>${d.a.map(v => `<td class="n">${v.toFixed(4)}</td>`).join('')}<td class="n">${avg(d.a).toFixed(3)}</td><td class="n">${chlIdx(d.a).toFixed(3)}</td></tr>`).join('');
-$('rgbRows').innerHTML = RGBDATA.map(d => `<tr><td><span class="sw" style="background:${hex(d.rgb)}"></span>${d.name}</td><td class="tag ${d.type}">${d.label}</td>${d.rgb.map(v => `<td class="n">${v}</td>`).join('')}<td class="n">${lum(d.rgb).toFixed(1)}</td></tr>`).join('');
+$('connBtn').onclick = () => connected ? disconnect() : connect();
+$('darkBtn').onclick = () => sendCmd('D');
+$('brightBtn').onclick = () => sendCmd('B');
+$('measureBtn').onclick = () => {
+  $('measureBtn').disabled = true;
+  ['R', 'G', 'B'].forEach(c => setPD(c, ''));
+  $('prog').hidden = false; status('측정 준비 중...');
+  sendCmd('C');
+};
 
-// ═════════════ 분광광도계 (시리얼) ═════════════
-let port = null, reader = null, writer = null;
-let connected = false, isMeasuring = false;
-let calDark = false, calBright = false;
-let currentChannel = 'R';
-let windowSize = 100;
-let manualI0 = { R: null, G: null, B: null };
-const dataStore = [];
-
-const chart = window.Chart ? new Chart($('absChart').getContext('2d'), {
-  type: 'line',
-  data: { labels: [], datasets: [{ label: '흡광도', data: [], borderColor: '#c8432f', backgroundColor: 'rgba(200,67,47,0.06)', pointRadius: 2, pointHoverRadius: 4, pointBackgroundColor: '#fff', pointBorderWidth: 1.5, borderWidth: 1.5, tension: 0.3, fill: true }] },
-  options: {
-    responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
-    interaction: { mode: 'index', intersect: false },
-    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#ffffff', borderColor: '#cdd1c4', borderWidth: 1, titleColor: '#7f877a', bodyColor: '#1d241b', padding: 10, callbacks: { label: c => ` 흡광도: ${c.parsed.y.toFixed(4)}` } } },
-    scales: {
-      x: { ticks: { color: '#7f877a', font: { size: 10 }, maxTicksLimit: 8 }, grid: { color: '#eceee8' }, border: { color: '#e1e4da' } },
-      y: { title: { display: true, text: '흡광도 (A)', color: '#7f877a', font: { size: 11 } }, ticks: { color: '#7f877a', font: { size: 10 } }, grid: { color: '#eceee8' }, border: { color: '#e1e4da' }, min: 0 }
-    }
-  }
-}) : null;
-window.chart = chart;
-
-async function toggleConnect() { connected ? await disconnect() : await connect(); }
 async function connect() {
-  if (!('serial' in navigator)) { log('Web Serial을 지원하지 않는 브라우저입니다. PC의 Chrome/Edge 89 이상을 사용하세요.', 'log-err'); return; }
+  if (!('serial' in navigator)) { status('이 브라우저는 기기 연결을 지원하지 않습니다. PC의 Chrome 또는 Edge를 사용하세요.', true); return; }
   try {
     port = await navigator.serial.requestPort();
-    await port.open({ baudRate: +$('baud').value });
-    connected = true; setConnUI(true);
+    await port.open({ baudRate: 9600 });
     const dec = new TextDecoderStream(); port.readable.pipeTo(dec.writable);
     reader = dec.readable.getReader();
     const enc = new TextEncoderStream(); enc.readable.pipeTo(port.writable);
     writer = enc.writable.getWriter();
+    connected = true; updateUI(); status('');
     readLoop();
-    log('연결됨', 'log-ok');
-  } catch (e) { log('연결 실패: ' + e.message, 'log-err'); }
+  } catch (e) { status('연결하지 못했습니다: ' + e.message, true); }
 }
 async function disconnect() {
-  isMeasuring = false;
   try { if (reader) await reader.cancel(); if (writer) await writer.close(); if (port) await port.close(); } catch (e) {}
-  port = reader = writer = null; connected = false; setConnUI(false);
-  setLED(null); log('연결 해제', 'log-warn');
+  port = reader = writer = null; connected = false; updateUI();
 }
-function setConnUI(on) {
-  $('dot').className = 'dot' + (on ? ' conn' : '');
-  $('statusTxt').textContent = on ? '연결됨' : '미연결';
-  $('connBtn').textContent = on ? '해제' : '연결';
-  ['darkBtn', 'brightBtn', 'convertBtn'].forEach(id => $(id).disabled = !on);
-  checkMeasureBtn();
+function updateUI() {
+  $('connBtn').textContent = connected ? '연결 해제' : '연결하기';
+  $('n1').classList.toggle('done', connected);
+  $('darkBtn').disabled = $('brightBtn').disabled = !connected;
+  $('darkBadge').textContent = calDark ? '완료' : '';
+  $('brightBadge').textContent = calBright ? '완료' : '';
+  $('n2').classList.toggle('done', calDark && calBright);
+  $('measureBtn').disabled = !connected;
 }
-
-let lineBuf = '';
 async function readLoop() {
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       lineBuf += value;
-      const lines = lineBuf.split('\n');
-      lineBuf = lines.pop();
+      const lines = lineBuf.split('\n'); lineBuf = lines.pop();
       for (const l of lines) parseLine(l.trim());
     }
-  } catch (e) { if (connected) log('읽기 오류: ' + e.message, 'log-err'); }
+  } catch (e) { if (connected) status('기기와의 연결이 끊겼습니다.', true); }
 }
-
 function parseLine(line) {
   if (!line) return;
-  if (line.startsWith('RAW:')) { $('rawNow').textContent = Math.round(parseFloat(line.substring(4))); return; }
-  const isData = line.startsWith('DATA'), isRes = line.startsWith('RESULT');
-  log(line, isData ? 'log-data' : isRes ? 'log-result' : '');
-  if (line.startsWith('DATA:')) {
-    const p = line.substring(5).split(',');
-    if (p.length >= 2) addPoint((parseInt(p[0]) / 1000).toFixed(1) + 's', parseFloat(p[1]), p[2] ? parseFloat(p[2]) : null);
-  } else if (line.startsWith('RESULT:')) {
-    const p = line.substring(7).split(',');
-    if (p.length === 3) showResult(parseFloat(p[0]), parseFloat(p[1]), parseFloat(p[2]));
+  if (line.startsWith('RESULT:')) {
+    const p = line.substring(7).split(',').map(parseFloat);
+    if (p.length === 3) {
+      if (p.some(v => isNaN(v) || v < 0)) { status('측정값이 올바르지 않습니다. 보정 후 다시 측정해 주세요.', true); return; }
+      judgeSpec(p);
+    }
   } else if (line.startsWith('STATUS:')) {
     handleStatus(line.substring(7));
   } else if (line.startsWith('DARK:')) {
-    calDark = true; markCal('dark'); checkMeasureBtn();
-  } else if (line.startsWith('BRIGHT_CH:')) {
-    const chMap = { 0: 'R', 1: 'G', 2: 'B' };
-    const chIdx = parseInt(line.substring(10));
-    const m = line.match(/I0:([\d.]+)/);
-    if (!isNaN(chIdx) && m) { const ch = chMap[chIdx]; if (ch && manualI0[ch] === null) $('i0Display' + ch).textContent = parseFloat(m[1]).toFixed(1) + ' (자동)'; }
-  } else if (line.startsWith('BRIGHT:')) {
-    const p = line.substring(7).split(',');
-    if (p.length === 3) log(`초기 빛 세기 설정 — R:${parseFloat(p[0]).toFixed(1)}, G:${parseFloat(p[1]).toFixed(1)}, B:${parseFloat(p[2]).toFixed(1)}`, 'log-ok');
-  } else if (line.startsWith('CHANNEL:')) {
-    const m = { RED: 'R', GREEN: 'G', BLUE: 'B' };
-    syncChDisplay(m[line.substring(8)] || 'R');
-  } else if (line.startsWith('TEST:')) {
-    const t = line.substring(5);
-    if (t === 'RED_ON') setLED('R'); else if (t === 'GREEN_ON') setLED('G'); else if (t === 'BLUE_ON') setLED('B'); else if (t === 'ALL_OFF') setLED(null);
+    calDark = true; updateUI();
   } else if (line.startsWith('ERROR:')) {
-    log(line, 'log-err'); resetConvertUI();
+    status('오류: ' + line.substring(6), true);
+    $('prog').hidden = true; $('measureBtn').disabled = !connected;
   }
 }
-
 function handleStatus(s) {
-  const el = $('cvStatus');
-  if (s === 'MEASURING_START') { isMeasuring = true; updateMeasureBtn(); setLED(currentChannel); $('dot').className = 'dot measure'; $('statusTxt').textContent = '관측 중'; }
-  else if (s === 'MEASURING_STOP') { isMeasuring = false; updateMeasureBtn(); setLED(null); $('dot').className = 'dot conn'; $('statusTxt').textContent = '연결됨'; }
-  else if (s === 'DARK_DONE') { calDark = true; markCal('dark'); checkMeasureBtn(); }
-  else if (s === 'CONVERT_START') { $('cvProg').classList.add('visible'); el.textContent = '측정 준비 중...'; }
-  else if (s === 'BRIGHT_CALIBRATING') { $('brightBtn').disabled = true; el.textContent = '초기 빛 세기 측정 중...'; $('cvProg').classList.add('visible'); }
-  else if (s === 'SETTLING_RED') { setPD('R', 'active'); el.textContent = 'RED 안정화 (1초)...'; setLED('R'); }
-  else if (s === 'MEASURING_RED') { el.textContent = 'RED 측정 중 (3초)...'; }
-  else if (s === 'SETTLING_GREEN') { setPD('R', 'done'); setPD('G', 'active'); el.textContent = 'GREEN 안정화 (1초)...'; setLED('G'); }
-  else if (s === 'MEASURING_GREEN') { el.textContent = 'GREEN 측정 중 (3초)...'; }
-  else if (s === 'SETTLING_BLUE') { setPD('G', 'done'); setPD('B', 'active'); el.textContent = 'BLUE 안정화 (1초)...'; setLED('B'); }
-  else if (s === 'MEASURING_BLUE') { el.textContent = 'BLUE 측정 중 (3초)...'; }
-  else if (s === 'CONVERT_DONE') { setPD('B', 'done'); el.textContent = '완료'; $('convertBtn').disabled = false; setLED(isMeasuring ? currentChannel : null); }
-  else if (s === 'BRIGHT_DONE') {
-    $('brightBtn').disabled = false; $('cvProg').classList.remove('visible');
-    CHS.forEach(c => setPD(c, '')); el.textContent = '';
-    calBright = true; markCal('bright'); checkMeasureBtn(); setLED(null);
-  }
+  if (s === 'DARK_DONE') { calDark = true; updateUI(); }
+  else if (s === 'BRIGHT_CALIBRATING') { $('brightBtn').disabled = true; status('기준 빛 세기 측정 중...'); }
+  else if (s === 'BRIGHT_DONE') { calBright = true; updateUI(); status(''); $('prog').hidden = true; }
+  else if (s === 'SETTLING_RED') { setPD('R', 'active'); status('RED 측정 중...'); }
+  else if (s === 'SETTLING_GREEN') { setPD('R', 'done'); setPD('G', 'active'); status('GREEN 측정 중...'); }
+  else if (s === 'SETTLING_BLUE') { setPD('G', 'done'); setPD('B', 'active'); status('BLUE 측정 중...'); }
+  else if (s === 'CONVERT_DONE') { setPD('B', 'done'); status(''); $('measureBtn').disabled = !connected; $('n3').classList.add('done'); }
 }
-
-function toggleMeasure() { sendCmd(isMeasuring ? 'P' : 'S'); }
-function updateMeasureBtn() {
-  const btn = $('measureBtn'), note = $('measureNote');
-  if (isMeasuring) { btn.className = 'measure-btn stop'; btn.textContent = '관측 정지'; note.textContent = 'LED 켜진 상태로 측정 중...'; }
-  else { btn.className = 'measure-btn start'; btn.textContent = '관측 시작'; note.textContent = '시작하면 선택한 채널 LED가 켜집니다'; }
-}
-function checkMeasureBtn() {
-  const ok = connected && calDark && calBright;
-  $('measureBtn').disabled = !ok;
-  if (!ok) $('measureNote').textContent = '보정 완료 후 활성화됩니다';
-}
-function setChannel(ch) { sendCmd({ R: 'R', G: 'G', B: 'U' }[ch]); syncChDisplay(ch); }
-function syncChDisplay(ch) {
-  currentChannel = ch;
-  CHS.forEach(c => { $('ch' + c).className = 'ch-btn' + (c === ch ? ' sel-' + c : ''); });
-  $('absChLabel').textContent = { R: 'RED 채널', G: 'GREEN 채널', B: 'BLUE 채널' }[ch];
-  if (chart) {
-    chart.data.datasets[0].borderColor = { R: '#c8432f', G: '#2f8556', B: '#2c62b0' }[ch];
-    chart.data.datasets[0].backgroundColor = { R: 'rgba(200,67,47,0.06)', G: 'rgba(47,133,86,0.06)', B: 'rgba(44,98,176,0.06)' }[ch];
-    chart.update('none');
-  }
-  if (isMeasuring) setLED(ch);
-}
-function setLED(ch) {
-  $('ledR').className = 'led-indicator' + (ch === 'R' ? ' r-on' : '');
-  $('ledG').className = 'led-indicator' + (ch === 'G' ? ' g-on' : '');
-  $('ledB').className = 'led-indicator' + (ch === 'B' ? ' b-on' : '');
-}
-function doConvert() {
-  $('convertBtn').disabled = true; $('resultPanel').classList.remove('visible');
-  CHS.forEach(c => setPD(c, '')); $('cvStatus').textContent = '';
-  sendCmd('C');
-}
-function setPD(ch, state) { $('pd' + ch).className = 'pd ' + state; }
-function resetConvertUI() {
-  CHS.forEach(c => setPD(c, '')); $('cvProg').classList.remove('visible');
-  $('cvStatus').textContent = ''; $('convertBtn').disabled = false;
-}
-function showResult(R, G, B) {
-  $('resultPanel').classList.add('visible');
-  setResRow('R', R); setResRow('G', G); setResRow('B', B);
-  if (R >= 0 && G >= 0 && B >= 0) { setAbs([R, G, B]); log(`판정: ${$('sPill').textContent}`, 'log-result'); }
-}
-function setResRow(ch, val) {
-  const el = $('res' + ch), bar = $('bar' + ch);
-  if (val < 0) { el.textContent = '—'; bar.style.width = '0%'; }
-  else { el.textContent = val.toFixed(4); setTimeout(() => { bar.style.width = Math.min(val / 2 * 100, 100) + '%'; }, 50); }
-}
-function setManualI0(ch) {
-  const v = parseFloat($('i0Input' + ch).value);
-  if (isNaN(v) || v <= 0) { log('올바른 I0값을 입력하세요 (' + ch + ')', 'log-err'); return; }
-  manualI0[ch] = v; $('i0Display' + ch).textContent = v.toFixed(1);
-  log('I0 수동 설정 [' + ch + ']: ' + v.toFixed(1), 'log-ok');
-}
-function clearManualI0(ch) {
-  manualI0[ch] = null; $('i0Display' + ch).textContent = '미설정'; $('i0Input' + ch).value = '';
-  log('I0 초기화 [' + ch + '] (초기 빛 세기값 사용)', 'log-warn');
-}
-function clearAllManualI0() {
-  CHS.forEach(c => { manualI0[c] = null; $('i0Display' + c).textContent = '미설정'; $('i0Input' + c).value = ''; });
-  log('I0 수동 설정 전체 초기화', 'log-warn');
-}
-function addPoint(label, abs, raw) {
-  const i0 = manualI0[currentChannel];
-  if (i0 != null && raw != null) { const ratio = raw / i0; abs = ratio > 0 ? -Math.log10(ratio) : -1; }
-  dataStore.push({ label, abs, ch: currentChannel });
-  $('sampleCnt').textContent = dataStore.length + '개';
-  $('absNow').textContent = abs >= 0 ? abs.toFixed(4) : '—';
-  $('rawNow').textContent = raw != null ? Math.round(raw) : '—';
-  if (!chart) return;
-  const ws = windowSize === 0 ? dataStore.length : windowSize;
-  const sl = dataStore.slice(-ws);
-  chart.data.labels = sl.map(d => d.label);
-  chart.data.datasets[0].data = sl.map(d => d.abs >= 0 ? d.abs : null);
-  chart.update('none');
-}
-function clearData() {
-  dataStore.length = 0;
-  if (chart) { chart.data.labels = []; chart.data.datasets[0].data = []; chart.update(); }
-  $('absNow').textContent = '—'; $('sampleCnt').textContent = '0개';
-  log('데이터 초기화', 'log-warn');
-}
-function generateCSV() { return 'Time(s),Channel,Absorbance\n' + dataStore.map(d => `${d.label},${d.ch},${d.abs.toFixed(4)}`).join('\n'); }
-function exportCSV() {
-  if (!dataStore.length) { log('저장할 데이터 없음', 'log-warn'); return; }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['﻿' + generateCSV()], { type: 'text/csv;charset=utf-8;' }));
-  a.download = `abs_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
-  a.click();
-  log('CSV 저장됨 (' + dataStore.length + '행)', 'log-ok');
-}
-async function copyCSV() {
-  if (!dataStore.length) { log('복사할 데이터 없음', 'log-warn'); return; }
-  try { await navigator.clipboard.writeText(generateCSV()); log('클립보드에 복사됨', 'log-ok'); }
-  catch (e) { log('복사 실패', 'log-err'); }
-}
+function setPD(ch, st) { $('pd' + ch).className = 'pd ' + st; }
 async function sendCmd(cmd) { if (!writer) return; try { await writer.write(cmd); } catch (e) {} }
-const logBox = $('logBox');
-function log(msg, cls = '') {
-  const d = document.createElement('div'); d.className = cls;
-  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  logBox.appendChild(d); logBox.scrollTop = logBox.scrollHeight;
-  if (logBox.children.length > 300) logBox.removeChild(logBox.firstChild);
-}
-function clearLog() { logBox.innerHTML = ''; }
-function markCal(type) { const el = $(type === 'dark' ? 'darkBadge' : 'brightBadge'); el.className = 'cal-badge ok'; el.textContent = '완료'; }
 
-// ═════════════ 시작 ═════════════
-judgeSpec();
-setRGB([89, 60, 102]);
-showView();
+// ── 반응지 사진 판정 (G 70, 경계 60~77) ──
+function judgeRGB(rgb) {
+  const [r, g, b] = rgb.map(Math.round);
+  $('swatch').hidden = false; $('swatch').style.background = `rgb(${r},${g},${b})`;
+  const pill = $('rPill');
+  if ((r + b) / 2 - g < 8) {
+    pill.className = 'pill w'; pill.textContent = '다시 선택';
+    $('rDesc').textContent = '보라색 부분이 아닌 것 같습니다. 발색된 부분을 눌러 주세요.';
+  } else if (g > 60 && g < 77) {
+    pill.className = 'pill w'; pill.textContent = '판별 어려움';
+    $('rDesc').textContent = '경계에 가까운 색입니다. 밝은 곳에서 다시 찍어 주세요.';
+  } else {
+    const t = g <= 70 ? 'm' : 't';
+    pill.className = 'pill ' + t; pill.textContent = NAME(t);
+    $('rDesc').textContent = t === 'm' ? '진한 보라색: 유리 아미노산(테아닌)이 많습니다.' : '연한 보라색: 유리 아미노산이 적습니다.';
+  }
+}
+const cv = $('cv'), ctx = cv.getContext('2d', { willReadFrequently: true });
+let img = null, mark = null;
+function draw() {
+  if (!img) return;
+  const w = Math.min(900, img.naturalWidth), h = Math.round(w * img.naturalHeight / img.naturalWidth);
+  cv.width = w; cv.height = h; ctx.drawImage(img, 0, 0, w, h);
+  if (mark) { ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.strokeRect(mark[0] - 8, mark[1] - 8, 16, 16); ctx.lineWidth = 1.5; ctx.strokeStyle = '#000'; ctx.strokeRect(mark[0] - 10, mark[1] - 10, 20, 20); }
+}
+function load(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const im = new Image();
+  im.onload = () => { img = im; mark = null; cv.hidden = false; $('cvHint').hidden = false; $('dropText').textContent = '다른 사진 올리기'; draw(); };
+  im.src = URL.createObjectURL(file);
+}
+$('file').addEventListener('change', e => load(e.target.files[0]));
+const drop = $('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); load(e.dataTransfer.files[0]); });
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
+cv.addEventListener('click', e => {
+  const rc = cv.getBoundingClientRect();
+  const x = Math.round((e.clientX - rc.left) * cv.width / rc.width), y = Math.round((e.clientY - rc.top) * cv.height / rc.height);
+  mark = null; draw();
+  const x0 = Math.max(0, x - 4), y0 = Math.max(0, y - 4);
+  const d = ctx.getImageData(x0, y0, Math.min(9, cv.width - x0), Math.min(9, cv.height - y0)).data;
+  const s = [0, 0, 0]; let n = 0;
+  for (let i = 0; i < d.length; i += 4) { s[0] += d[i]; s[1] += d[i + 1]; s[2] += d[i + 2]; n++; }
+  mark = [x, y]; draw();
+  judgeRGB(s.map(v => v / n));
+});
 </script>
 </body>
 </html>
